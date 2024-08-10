@@ -1,0 +1,106 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let ATHENA_WORKGROUP_TYPE = "AWS::Athena::WorkGroup"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let athena_workgroups = Resources.*[ Type == %ATHENA_WORKGROUP_TYPE ]
+
+#
+# Primary Rules
+#
+rule athena_workgroup_results_encrypted_at_rest_kms_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                               %athena_workgroups not empty {
+    check(%athena_workgroups.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule athena_workgroup_results_encrypted_at_rest_kms_check when is_cfn_hook(%INPUT_DOCUMENT, %ATHENA_WORKGROUP_TYPE) {
+    check(%INPUT_DOCUMENT.%ATHENA_WORKGROUP_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(athena_workgroup) {
+    %athena_workgroup {
+        WorkGroupConfiguration exists
+        WorkGroupConfiguration is_struct
+
+        WorkGroupConfiguration {
+            # Scenario 2
+            EnforceWorkGroupConfiguration not exists or
+            EnforceWorkGroupConfiguration == true
+
+            ResultConfiguration exists
+            ResultConfiguration is_struct
+            ResultConfiguration {
+                # Scenario 3
+                EncryptionConfiguration exists
+                EncryptionConfiguration is_struct
+
+                EncryptionConfiguration {
+                    # Scenarios 4, 5, 6 and 7
+                    EncryptionOption exists
+                    check_is_string_and_not_empty(EncryptionOption)
+
+                    KmsKey exists
+                    check_is_string_and_not_empty(KmsKey) or
+                    check_local_references(%INPUT_DOCUMENT, KmsKey, "AWS::KMS::Key") or
+                    check_local_references(%INPUT_DOCUMENT, KmsKey, "AWS::KMS::Alias")
+                }
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}
+
+rule check_is_string_and_not_empty(value) {
+    %value {
+        this is_string
+        this != /\A\s*\z/
+    }
+}
+
+rule check_local_references(doc, reference_properties, referenced_resource_type) {
+    %reference_properties {
+        'Fn::GetAtt' {
+            query_for_resource(%doc, this[0], %referenced_resource_type)
+                <<Local Stack reference was invalid>>
+        } or Ref {
+            query_for_resource(%doc, this, %referenced_resource_type)
+                <<Local Stack reference was invalid>>
+        }
+    }
+}
+
+rule query_for_resource(doc, resource_key, referenced_resource_type) {
+    let referenced_resource = %doc.Resources[ keys == %resource_key ]
+    %referenced_resource not empty
+    %referenced_resource {
+        Type == %referenced_resource_type
+    }
+}

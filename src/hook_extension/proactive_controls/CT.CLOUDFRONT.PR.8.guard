@@ -1,0 +1,139 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDFRONT_DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let cloudfront_distributions = Resources.*[ Type == %CLOUDFRONT_DISTRIBUTION_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudfront_traffic_to_origin_encrypted_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                       %cloudfront_distributions not empty {
+    check(%cloudfront_distributions.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudfront_traffic_to_origin_encrypted_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDFRONT_DISTRIBUTION_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDFRONT_DISTRIBUTION_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudfront_distribution) {
+    %cloudfront_distribution[
+        filter_cloudfront_distribution_with_legacy_origins(this)
+    ] {
+        DistributionConfig {
+            # Scenario 4
+            CustomOrigin not exists
+        }
+    }
+
+    %cloudfront_distribution [
+        # Scenario 2
+        filter_cloudfront_distribution_with_origins(this)
+    ] {
+        let cloudfront_distro = this
+
+        DistributionConfig {
+            Origins [
+                # Scenario 3
+                CustomOriginConfig exists
+                CustomOriginConfig is_struct
+            ] {
+                CustomOriginConfig {
+                    # Scenario 5
+                    OriginProtocolPolicy != "http-only"
+                    # Scenario 6
+                    OriginProtocolPolicy == "https-only" or
+                    # Scenario 6 and 8
+                    match_viewer_policy_with_no_allow_all_viewer_protocol_policy(OriginProtocolPolicy, %cloudfront_distro)
+                }
+            }
+        }
+    }
+}
+
+rule match_viewer_policy_with_no_allow_all_viewer_protocol_policy(origin_protocol_policy, cloudfront_distribution) {
+    %origin_protocol_policy {
+        this == "match-viewer"
+
+        %cloudfront_distribution {
+            DistributionConfig {
+                DefaultCacheBehavior exists
+                DefaultCacheBehavior is_struct
+
+                DefaultCacheBehavior {
+                    check_viewer_protocol_policy(this)
+                }
+
+                when CacheBehaviors exists
+                     CacheBehaviors is_list
+                     CacheBehaviors not empty {
+
+                        CacheBehaviors[*] {
+                            check_viewer_protocol_policy(this)
+                        }
+                }
+            }
+        }
+    }
+}
+
+rule check_viewer_protocol_policy(cache_behaviour) {
+    %cache_behaviour {
+        ViewerProtocolPolicy exists
+        ViewerProtocolPolicy != "allow-all"
+    }
+}
+
+rule filter_cloudfront_distribution_with_origins(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            Origins exists
+            Origins is_list
+            Origins not empty
+        }
+    }
+}
+
+rule filter_cloudfront_distribution_with_legacy_origins(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            CustomOrigin exists
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

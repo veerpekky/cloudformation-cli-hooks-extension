@@ -1,0 +1,114 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDFRONT_DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
+let UNSUPPORTED_ORIGIN_SSL_PROTOCOLS = [ "SSLv3" ]
+let OUT_OF_SCOPE_PROTOCOL_POLICIES = [ "http-only" ]
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let cloudfront_distributions = Resources.*[ Type == %CLOUDFRONT_DISTRIBUTION_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudfront_no_deprecated_ssl_protocols_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                       %cloudfront_distributions not empty {
+    check(%cloudfront_distributions.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudfront_no_deprecated_ssl_protocols_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDFRONT_DISTRIBUTION_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDFRONT_DISTRIBUTION_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudfront_distribution) {
+    %cloudfront_distribution[
+        filter_cloudfront_distribution_with_legacy_origins(this)
+    ] {
+        DistributionConfig {
+            # Scenario 5
+            CustomOrigin not exists
+        }
+    }
+
+    %cloudfront_distribution[
+        # Scenario 2
+        filter_cloudfront_distribution_with_origins(this)
+    ] {
+        DistributionConfig {
+            Origins [
+                # Scenario 3 and 4
+                CustomOriginConfig exists
+                CustomOriginConfig is_struct
+                filter_custom_origin_config(CustomOriginConfig)
+            ] {
+                CustomOriginConfig {
+                    # Scenario 6, 7 and 8
+                    OriginSSLProtocols exists
+                    OriginSSLProtocols is_list
+                    OriginSSLProtocols not empty
+                    %UNSUPPORTED_ORIGIN_SSL_PROTOCOLS.* not in OriginSSLProtocols
+                }
+            }
+        }
+    }
+}
+
+
+rule filter_cloudfront_distribution_with_origins(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            Origins exists
+            Origins is_list
+            Origins not empty
+        }
+    }
+}
+
+rule filter_cloudfront_distribution_with_legacy_origins(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            CustomOrigin exists
+        }
+    }
+}
+
+rule filter_custom_origin_config(custom_origin_config) {
+    %custom_origin_config {
+        OriginProtocolPolicy exists
+        OriginProtocolPolicy not in %OUT_OF_SCOPE_PROTOCOL_POLICIES
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

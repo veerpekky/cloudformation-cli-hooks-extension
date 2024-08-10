@@ -1,0 +1,81 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let ATHENA_WORKGROUP_TYPE = "AWS::Athena::WorkGroup"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let athena_workgroups = Resources.*[ Type == %ATHENA_WORKGROUP_TYPE ]
+
+#
+# Primary Rules
+#
+rule athena_workgroup_results_encrypted_at_rest_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                           %athena_workgroups not empty {
+    check(%athena_workgroups.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule athena_workgroup_results_encrypted_at_rest_check when is_cfn_hook(%INPUT_DOCUMENT, %ATHENA_WORKGROUP_TYPE) {
+    check(%INPUT_DOCUMENT.%ATHENA_WORKGROUP_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(athena_workgroup) {
+    %athena_workgroup {
+        WorkGroupConfiguration exists
+        WorkGroupConfiguration is_struct
+
+        WorkGroupConfiguration {
+            # Scenario 2
+            EnforceWorkGroupConfiguration not exists or
+            EnforceWorkGroupConfiguration == true
+
+            ResultConfiguration exists
+            ResultConfiguration is_struct
+            ResultConfiguration {
+                # Scenario 3
+                EncryptionConfiguration exists
+                EncryptionConfiguration is_struct
+
+                EncryptionConfiguration {
+                    # Scenarios 4 and 5
+                    EncryptionOption exists
+                    check_is_string_and_not_empty(EncryptionOption)
+                }
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}
+
+rule check_is_string_and_not_empty(value) {
+    %value {
+        this is_string
+        this != /\A\s*\z/
+    }
+}

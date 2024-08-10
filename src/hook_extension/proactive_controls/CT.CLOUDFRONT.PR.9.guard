@@ -1,0 +1,80 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDFRONT_DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
+let INPUT_DOCUMENT = this
+let NON_COMPLIANT_TLS_POLICIES_LIST = ["SSLv3", "TLSv1", "TLSv1_2016", "TLSv1.1_2016"]
+
+#
+# Assignments
+#
+let cloudfront_distributions = Resources.*[ Type == %CLOUDFRONT_DISTRIBUTION_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudfront_security_policy_check when is_cfn_template(%INPUT_DOCUMENT)
+                                           %cloudfront_distributions not empty {
+    check(%cloudfront_distributions.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudfront_security_policy_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDFRONT_DISTRIBUTION_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDFRONT_DISTRIBUTION_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            # Scenario 2
+            ViewerCertificate exists
+            ViewerCertificate is_struct
+
+            ViewerCertificate {
+                # Scenario 3
+                CloudFrontDefaultCertificate not exists or
+                CloudFrontDefaultCertificate == false
+
+                # Scenario 4, 5 and 6
+                MinimumProtocolVersion exists
+
+                check_is_string_and_not_empty(MinimumProtocolVersion)
+                MinimumProtocolVersion not in %NON_COMPLIANT_TLS_POLICIES_LIST
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule check_is_string_and_not_empty(value) {
+    %value {
+        this is_string
+        this != /\A\s*\z/
+    }
+}
+
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

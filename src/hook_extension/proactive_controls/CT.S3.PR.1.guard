@@ -1,0 +1,69 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let S3_BUCKET_TYPE = "AWS::S3::Bucket"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let s3_buckets = Resources.*[ Type == %S3_BUCKET_TYPE ]
+
+#
+# Primary Rules
+#
+rule s3_bucket_level_public_access_prohibited_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                         %s3_buckets not empty {
+    check(%s3_buckets.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule s3_bucket_level_public_access_prohibited_check when is_cfn_hook(%INPUT_DOCUMENT, %S3_BUCKET_TYPE) {
+    check(%INPUT_DOCUMENT.%S3_BUCKET_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(s3_bucket) {
+    %s3_bucket {
+        # Scenario 2
+        PublicAccessBlockConfiguration exists
+        PublicAccessBlockConfiguration is_struct
+
+        PublicAccessBlockConfiguration {
+            # Scenario 3
+            BlockPublicAcls exists
+            BlockPublicPolicy exists
+            IgnorePublicAcls exists
+            RestrictPublicBuckets exists
+
+            # Scenarios 4 and 5
+            BlockPublicAcls == "true"
+            BlockPublicPolicy == "true"
+            IgnorePublicAcls == "true"
+            RestrictPublicBuckets == "true"
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

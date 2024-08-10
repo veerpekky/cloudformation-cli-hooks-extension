@@ -1,0 +1,58 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDWATCH_LOGS_TYPE = "AWS::Logs::LogGroup"
+let MINIMUM_RETENTION_IN_DAYS = 365
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let cloudwatch_log_groups = Resources.*[ Type == %CLOUDWATCH_LOGS_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudwatch_log_group_retention_period_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                      %cloudwatch_log_groups not empty {
+    check(%cloudwatch_log_groups.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudwatch_log_group_retention_period_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDWATCH_LOGS_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDWATCH_LOGS_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudwatch_log_group){
+    %cloudwatch_log_group {
+        # Scenario 3
+        RetentionInDays not exists or
+
+        # Scenarios 2 and 4
+        RetentionInDays >= %MINIMUM_RETENTION_IN_DAYS
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

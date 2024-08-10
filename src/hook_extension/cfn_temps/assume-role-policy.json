@@ -1,0 +1,25 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Service": [
+          "hooks.cloudformation.amazonaws.com",
+          "resources.cloudformation.amazonaws.com"
+        ]
+      },
+      "Action": "sts:AssumeRole",
+      "Condition": {
+        "StringEquals": {
+          "aws:SourceAccount": "__ACCOUNT_ID__"
+        },
+        "StringLike": {
+          "aws:SourceArn": [
+            "arn:aws:cloudformation:__REGION__:__ACCOUNT_ID__:type/hook/__HOOK_ALIAS__/*"
+          ]
+        }
+      }
+    }
+  ]
+}

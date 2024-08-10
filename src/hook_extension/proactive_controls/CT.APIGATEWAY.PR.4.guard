@@ -1,0 +1,93 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let API_GW_V2_STAGE_TYPE = "AWS::ApiGatewayV2::Stage"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let api_gateway_v2_stages = Resources.*[ Type == %API_GW_V2_STAGE_TYPE ]
+
+#
+# Primary Rules
+#
+rule api_gw_v2_access_logs_enabled_check when is_cfn_template(%INPUT_DOCUMENT)
+                                              %api_gateway_v2_stages not empty {
+    check(%api_gateway_v2_stages.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule api_gw_v2_access_logs_enabled_check when is_cfn_hook(%INPUT_DOCUMENT, %API_GW_V2_STAGE_TYPE) {
+    check(%INPUT_DOCUMENT.%API_GW_V2_STAGE_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(api_gateway_v2_stage) {
+    %api_gateway_v2_stage {
+        # Scenario 2
+        AccessLogSettings exists
+        AccessLogSettings is_struct
+
+        AccessLogSettings {
+            # Scenario 3
+            DestinationArn exists
+            check_is_string_and_not_empty(DestinationArn) or
+            check_local_references(%INPUT_DOCUMENT, DestinationArn, "AWS::Logs::LogGroup")
+
+            # Scenario 4, 5
+            Format exists
+            check_is_string_and_not_empty(Format)
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}
+
+rule check_is_string_and_not_empty(value) {
+    %value {
+        this is_string
+        this != /\A\s*\z/
+    }
+}
+
+rule check_local_references(doc, reference_properties, referenced_resource_type) {
+    %reference_properties {
+        'Fn::GetAtt' {
+            query_for_resource(%doc, this[0], %referenced_resource_type)
+                <<Local Stack reference was invalid>>
+        } or Ref {
+            query_for_resource(%doc, this, %referenced_resource_type)
+                <<Local Stack reference was invalid>>
+        }
+    }
+}
+
+rule query_for_resource(doc, resource_key, referenced_resource_type) {
+    let referenced_resource = %doc.Resources[ keys == %resource_key ]
+    %referenced_resource not empty
+    %referenced_resource {
+        Type == %referenced_resource_type
+    }
+}

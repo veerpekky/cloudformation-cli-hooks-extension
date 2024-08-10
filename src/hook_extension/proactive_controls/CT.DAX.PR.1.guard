@@ -1,0 +1,61 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let DAX_CLUSTER_TYPE = "AWS::DAX::Cluster"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let dax_clusters = Resources.*[ Type == %DAX_CLUSTER_TYPE ]
+
+#
+# Primary Rules
+#
+rule dax_cluster_encryption_enabled_check when is_cfn_template(%INPUT_DOCUMENT)
+                                               %dax_clusters not empty {
+    check(%dax_clusters.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule dax_cluster_encryption_enabled_check when is_cfn_hook(%INPUT_DOCUMENT, %DAX_CLUSTER_TYPE) {
+    check(%INPUT_DOCUMENT.%DAX_CLUSTER_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(dax_cluster) {
+    %dax_cluster {
+        # Scenario 2
+        SSESpecification exists
+        SSESpecification is_struct
+
+        # Scenario 3 and 4
+        SSESpecification {
+            SSEEnabled exists
+            SSEEnabled == true
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

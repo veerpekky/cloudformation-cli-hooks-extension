@@ -10,6 +10,7 @@ from .describe_hook import setup_parser as setup_describe_parser
 from .configure_hook import setup_parser as setup_configure_parser
 from .set_default_hook_version import setup_parser as setup_set_default_version_parser
 from .enable_lambda_hook import setup_parser as setup_enable_lambda_invoker_parser
+from .build_guard_hook import setup_parser as setup_build_guard_hook_parser
 
 LOG = logging.getLogger(__name__)
 
@@ -42,3 +43,4 @@ class HookExtension(ExtensionPlugin):
         setup_configure_parser(hook_parser)
         setup_set_default_version_parser(hook_parser)
         setup_enable_lambda_invoker_parser(hook_parser)
+        setup_build_guard_hook_parser(hook_parser)

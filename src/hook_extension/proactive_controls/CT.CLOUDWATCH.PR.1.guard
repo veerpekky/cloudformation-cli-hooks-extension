@@ -1,0 +1,57 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDWATCH_ALARM_TYPE = "AWS::CloudWatch::Alarm"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let cloudwatch_alarms = Resources.*[ Type == %CLOUDWATCH_ALARM_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudwatch_alarm_action_check when is_cfn_template(%INPUT_DOCUMENT)
+                                        %cloudwatch_alarms not empty {
+    check(%cloudwatch_alarms.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudwatch_alarm_action_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDWATCH_ALARM_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDWATCH_ALARM_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudwatch_alarm){
+    %cloudwatch_alarm {
+        # Scenario 2
+        AlarmActions exists
+        # Scenarios 3 and 4
+        AlarmActions is_list
+        AlarmActions not empty
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

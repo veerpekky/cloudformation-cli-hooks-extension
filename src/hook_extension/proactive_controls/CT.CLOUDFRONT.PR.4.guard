@@ -1,0 +1,79 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let CLOUDFRONT_DISTRIBUTION_TYPE = "AWS::CloudFront::Distribution"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let cloudfront_distributions = Resources.*[ Type == %CLOUDFRONT_DISTRIBUTION_TYPE ]
+
+#
+# Primary Rules
+#
+rule cloudfront_origin_failover_enabled_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                   %cloudfront_distributions not empty {
+    check(%cloudfront_distributions.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule cloudfront_origin_failover_enabled_check when is_cfn_hook(%INPUT_DOCUMENT, %CLOUDFRONT_DISTRIBUTION_TYPE) {
+    check(%INPUT_DOCUMENT.%CLOUDFRONT_DISTRIBUTION_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(cloudfront_distribution) {
+    %cloudfront_distribution {
+        DistributionConfig exists
+        DistributionConfig is_struct
+
+        DistributionConfig {
+            # Scenario 2
+            OriginGroups exists
+            OriginGroups is_struct
+
+            OriginGroups {
+                # Scenario 3
+                Quantity exists
+                Quantity >= 1
+
+                Items exists
+                Items is_list
+                Items not empty
+
+                Items[*] {
+                    Members exists
+                    Members is_struct
+                    Members {
+                        # Scenarios 4 and 5
+                        Quantity == 2
+                    }
+                }
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

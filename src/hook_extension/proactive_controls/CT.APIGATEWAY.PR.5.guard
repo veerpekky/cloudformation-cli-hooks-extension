@@ -1,0 +1,88 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let API_GW_ROUTE_TYPE = "AWS::ApiGatewayV2::Route"
+let API_GW_MANAGED_OVERRIDE_TYPE = "AWS::ApiGatewayV2::ApiGatewayManagedOverrides"
+let ALLOWED_AUTHORIZATION_TYPES = ["AWS_IAM", "JWT", "CUSTOM"]
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let api_route = Resources.*[ Type == %API_GW_ROUTE_TYPE ]
+let api_override = Resources.*[ Type == %API_GW_MANAGED_OVERRIDE_TYPE ]
+
+#
+# Primary Rules
+#
+rule api_gw_v2_authorization_type_configured_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                        %api_route not empty {
+    check_api_route(%api_route.Properties)
+         <<
+         {{ RULE_MESSAGE }}
+         >>
+}
+
+rule api_gw_v2_authorization_type_configured_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                        %api_override not empty {
+    check_api_override(%api_override.Properties)
+         <<
+         {{ RULE_MESSAGE }}
+         >>
+}
+
+rule api_gw_v2_authorization_type_configured_check when is_cfn_hook(%INPUT_DOCUMENT, %API_GW_ROUTE_TYPE) {
+    check_api_route(%INPUT_DOCUMENT.%API_GW_ROUTE_TYPE.resourceProperties)
+         <<
+         {{ RULE_MESSAGE }}
+         >>
+}
+
+rule api_gw_v2_authorization_type_configured_check when is_cfn_hook(%INPUT_DOCUMENT, %API_GW_MANAGED_OVERRIDE_TYPE) {
+    check_api_override(%INPUT_DOCUMENT.%API_GW_MANAGED_OVERRIDE_TYPE.resourceProperties)
+         <<
+         {{ RULE_MESSAGE }}
+         >>
+}
+
+#
+# Parameterized Rules
+#
+rule check_api_route(api_route) {
+    %api_route {
+        # Scenario 3
+        AuthorizationType exists
+
+        # Scenario 4 and 5
+        AuthorizationType in %ALLOWED_AUTHORIZATION_TYPES
+    }
+}
+
+rule check_api_override(api_override) {
+    %api_override [
+        # Scenario 2
+        Route exists
+        Route is_struct
+        Route {
+            AuthorizationType exists
+        }
+    ]{
+        check_api_route(Route)
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+     %doc.%RESOURCE_TYPE.resourceProperties exists
+ }

@@ -1,0 +1,81 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let API_GW_STAGE_TYPE = "AWS::ApiGateway::Stage"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let api_gateway_stages = Resources.*[ Type == %API_GW_STAGE_TYPE ]
+
+#
+# Primary Rules
+#
+rule api_gw_cache_encrypted_check when is_cfn_template(%INPUT_DOCUMENT)
+                                       %api_gateway_stages not empty {
+    check(%api_gateway_stages.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule api_gw_cache_encrypted_check when is_cfn_hook(%INPUT_DOCUMENT, %API_GW_STAGE_TYPE) {
+    check(%INPUT_DOCUMENT.%API_GW_STAGE_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(api_gateway_stage) {
+    %api_gateway_stage [
+        CacheClusterEnabled exists
+        CacheClusterEnabled == true
+    ] {
+        # Scenario 2, 3, 4, 6
+        cache_encrypted(this)
+    }
+}
+
+rule cache_encrypted(api_gateway_stage) {
+    %api_gateway_stage {
+        MethodSettings exists
+        MethodSettings is_list
+        MethodSettings not empty
+
+        some MethodSettings[*] {
+            HttpMethod exists
+            ResourcePath exists
+            CacheDataEncrypted exists
+
+            HttpMethod == "*"
+            ResourcePath == "/*"
+            CacheDataEncrypted == true
+        }
+
+        MethodSettings[*] {
+            when CacheDataEncrypted exists {
+                CacheDataEncrypted == true
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

@@ -1,0 +1,77 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let API_GW_STAGE_TYPE = "AWS::ApiGateway::Stage"
+let INPUT_DOCUMENT = this
+let VALID_LOG_LEVELS = [ "ERROR", "INFO" ]
+
+#
+# Assignments
+#
+let api_gateway_stages = Resources.*[ Type == %API_GW_STAGE_TYPE ]
+
+#
+# Primary Rules
+#
+rule api_gw_v1_execution_logging_enabled_check when is_cfn_template(%INPUT_DOCUMENT)
+                                                    %api_gateway_stages not empty {
+    check(%api_gateway_stages.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule api_gw_v1_execution_logging_enabled_check when is_cfn_hook(%INPUT_DOCUMENT, %API_GW_STAGE_TYPE) {
+    check(%INPUT_DOCUMENT.%API_GW_STAGE_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(api_gateway_stage) {
+    %api_gateway_stage {
+        # Scenario 2
+        MethodSettings exists
+        MethodSettings is_list
+        MethodSettings not empty
+
+        # Scenario 3
+        # At least one wildcard entry exists with valid logging enabled
+        some MethodSettings[*] {
+            HttpMethod exists
+            ResourcePath exists
+            LoggingLevel exists
+
+            HttpMethod == "*"
+            ResourcePath == "/*"
+            LoggingLevel in %VALID_LOG_LEVELS
+        }
+
+        # Scenario 4, 5
+        # When other methods explictly set/override logging settings, ensure that logging is not disabled
+        MethodSettings[*] {
+            when LoggingLevel exists {
+                LoggingLevel in %VALID_LOG_LEVELS
+            }
+        }
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}

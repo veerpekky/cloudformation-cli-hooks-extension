@@ -1,0 +1,56 @@
+# {{ RULE_HEADER }}
+
+#
+# Constants
+#
+let DOCUMENT_DB_CLUSTER_TYPE = "AWS::DocDB::DBCluster"
+let INPUT_DOCUMENT = this
+
+#
+# Assignments
+#
+let document_db_clusters = Resources.*[ Type == %DOCUMENT_DB_CLUSTER_TYPE ]
+
+#
+# Primary Rules
+#
+rule docdb_cluster_encrypted_check when is_cfn_template(%INPUT_DOCUMENT)
+                                        %document_db_clusters not empty {
+    check(%document_db_clusters.Properties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+rule docdb_cluster_encrypted_check when is_cfn_hook(%INPUT_DOCUMENT, %DOCUMENT_DB_CLUSTER_TYPE) {
+    check(%INPUT_DOCUMENT.%DOCUMENT_DB_CLUSTER_TYPE.resourceProperties)
+        <<
+        {{ RULE_MESSAGE }}
+        >>
+}
+
+#
+# Parameterized Rules
+#
+rule check(document_db_cluster) {
+    %document_db_cluster {
+        # Scenario 2
+        StorageEncrypted exists
+        # Scenarios 3 and 4
+        StorageEncrypted == true
+    }
+}
+
+#
+# Utility Rules
+#
+rule is_cfn_template(doc) {
+    %doc {
+        AWSTemplateFormatVersion exists  or
+        Resources exists
+    }
+}
+
+rule is_cfn_hook(doc, RESOURCE_TYPE) {
+    %doc.%RESOURCE_TYPE.resourceProperties exists
+}
