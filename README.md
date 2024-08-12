@@ -19,7 +19,7 @@ pip3 install cloudformation-cli-hooks-extension
 
 ### Usage
 
-All of these commands are meant to be run from inside your pre-initialized Hooks project directory. You can initialize a new project by using the `cfn init` command from the [CloudFormation CLI](https://github.com/aws-cloudformation/cloudformation-cli?tab=readme-ov-file#command-init). All of the commands use the `cfn hook` prefix, ex. `cfn hook describe`.
+All of these commands (exluding `build-guard-hook`) are meant to be run from inside your pre-initialized Hooks project directory. You can initialize a new project by using the `cfn init` command from the [CloudFormation CLI](https://github.com/aws-cloudformation/cloudformation-cli?tab=readme-ov-file#command-init). All of the commands use the `cfn hook` prefix, ex. `cfn hook describe`.
 
 #### Command: describe
 
@@ -134,6 +134,83 @@ Sample output:
 Success: AWSSamples::LambdaFunctionInvoker::Hook will now be invoked for CloudFormation deployments for ALL resources in FAIL mode.
 ```
 
+### Command: build-guard-hook
+
+This sub-command configures a first-party CloudFormation Guard Hook with selected proactive controls. It performs the following steps:
+
+1. Validates the provided proactive control names.
+2. Creates or updates an S3 bucket (specified by the `--s3bucket` argument) and uploads the selected guard files as a zip file.
+3. Creates an execution role for the Guard Hook.
+4. Activates the Guard Hook with a specified alias name.
+5. Configures the Guard Hook with the specified failure mode (`warn` or `fail`) and the S3 bucket location for the guard files.
+
+#### Usage
+
+```bash
+cfn hook configure --configuration-path ./myHookTypeConfig.json
+```
+or
+```bash
+cfn hook build-guard-hook --s3bucket <bucket-name> --controls-file <file-path>
+```
+
+#### Arguments
+
+- `--s3bucket`/`-s3` (required): Name of the S3 bucket to hold the proactive controls.
+- `--controls`/`-c`: List of selected proactive control names for hook configuration. Either this argument or `--controls-file` is required.
+- `--controls-file`/`-f`: Path to a text or JSON file containing the proactive control names for hook configuration. Either this argument or `--controls` is required.
+
+#### Interactive Prompts
+
+The command will prompt you for the following inputs:
+
+1. **Hook Alias Name**: Enter a hook alias name following the pattern `[a-zA-Z0-9_]+::[a-zA-Z0-9_]+::[a-zA-Z0-9_]+` and at least 10 characters long (e.g., `My::Custom::Hook`).
+2. **Failure Mode**: Enter the desired failure mode (`warn` or `fail`).
+
+#### Output
+
+The command will display the following output:
+
+- Execution Role Name and ARN
+- Progress messages for each step
+- Activated and Configured Hook ARNs
+- Final success message with the configured Guard Hook alias name
+
+Sample Output:
+```
+$ cfn hook build-guard-hook -s3 pc-sample-bucket -f controls.txt
+
+Validating proactive control names...
+   - Provided proactive controls valid.
+   
+Creating S3 bucket 'pc-sample-bucket'...
+   - S3 bucket 'pc-sample-bucket' created with server-side encryption enabled.
+
+Uploading the following guard files as a zip file: guard_files.zip
+   - CT.ATHENA.PR.1
+   - CT.ATHENA.PR.2
+
+Zip file uploaded to S3 bucket 'pc-sample-bucket'.
+
+Enter a hook alias name (e.g. My::Custom::Hook): Sample::Name::Hook
+Enter the desired failure mode ('warn' or 'fail'): warn
+
+Creating execution role...
+   - Execution Role Name: 'Sample-Name-Hook-ExecutionRole-XXXXXXXX'.
+   - Execution Role ARN: 'arn:aws:iam::XXXXXXXXXXXX:role/Sample-Name-Hook-ExecutionRole-XXXXXXXX'.
+
+Activating hook...
+{
+    "Arn": "arn:aws:cloudformation:eu-central-1:XXXXXXXXXXXX:type/hook/Sample-Name-Hook"
+}
+
+Configuring hook...
+{
+    "ConfigurationArn": "arn:aws:cloudformation:eu-central-1:XXXXXXXXXXXX:type-configuration/hook/Sample-Name-Hook/default"
+}
+
+Guard Hook 'Sample::Name::Hook' created successfully.
+```
 
 ## Development
 
