@@ -147,7 +147,7 @@ This sub-command configures a first-party CloudFormation Guard Hook with selecte
 #### Usage
 
 ```bash
-cfn hook configure --configuration-path ./myHookTypeConfig.json
+cfn hook build-guard-hook --s3bucket <bucket-name> --controls <control-name>
 ```
 or
 ```bash
